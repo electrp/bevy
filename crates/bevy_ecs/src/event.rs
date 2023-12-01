@@ -3,8 +3,9 @@
 use crate as bevy_ecs;
 use crate::system::{Local, Res, ResMut, Resource, SystemParam};
 pub use bevy_ecs_macros::Event;
+use bevy_tasks::ParallelIterator;
 use bevy_utils::detailed_trace;
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Range};
 use std::{
     cmp::Ordering,
     fmt,
@@ -421,6 +422,10 @@ impl<'w, 's, E: Event> EventReader<'w, 's, E> {
         self.reader.read(&self.events)
     }
 
+    pub fn par_read(&mut self) -> EventParIterator<'_, E> {
+        self.reader.par_read(&self.events)
+    }
+
     /// Like [`read`](Self::read), except also returning the [`EventId`] of the events.
     pub fn read_with_id(&mut self) -> EventIteratorWithId<'_, E> {
         self.reader.read_with_id(&self.events)
@@ -569,9 +574,20 @@ impl<E: Event> ManualEventReader<E> {
         self.read_with_id(events).without_id()
     }
 
+    /// See [`EventReader::par_read`]
+    pub fn par_read<'a>(&'a mut self, events: &'a Events<E>) -> EventParIterator<'a, E> {
+        self.par_read_with_id(events).without_id()
+    }
+
+
     /// See [`EventReader::read_with_id`]
     pub fn read_with_id<'a>(&'a mut self, events: &'a Events<E>) -> EventIteratorWithId<'a, E> {
         EventIteratorWithId::new(self, events)
+    }
+
+    /// See [`EventReader::par_read`]
+    pub fn par_read_with_id<'a>(&'a mut self, events: &'a Events<E>) -> EventParIteratorWithId<'a, E> {
+        EventParIteratorWithId::new(self, events)
     }
 
     /// See [`EventReader::len`]
@@ -731,6 +747,57 @@ impl<'a, E: Event> ExactSizeIterator for EventIteratorWithId<'a, E> {
     fn len(&self) -> usize {
         self.unread
     }
+}
+
+/// Dictates how a parallel event chunks up large tables/archetypes
+/// during iteration.
+/// 
+/// Taken from [`query::par_iter`], may be moved
+#[derive(Clone)]
+pub struct DispatchTask<'a> {
+    /// The upper and lower limits for how large a compute batch.
+    ///
+    /// Setting the bounds to the same value will result in a fixed
+    /// batch size.
+    ///
+    /// Defaults to `[1, usize::MAX]`.
+    pub batch_size_limits: Range<usize>,
+    /// The number of batches per thread in the [`ComputeTaskPool`].
+    /// Increasing this value will decrease the batch size, which may
+    /// increase the scheduling overhead for the iteration.
+    ///
+    /// Defaults to 1.
+    ///
+    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    pub batches_per_thread: usize,
+    /// 
+    pub task_pool: &'a bevy_tasks::TaskPool
+}
+
+
+
+/// A parallel iterator that yields any unread events from  an [`EventReader`] or [`ManualEventReader`].
+#[derive(Debug)]
+pub struct EventParIterator<'a, E: Event> {
+    reader: &'a mut ManualEventReader<E>,
+    chain: Chain<Iter<'a, EventInstance<E>>, Iter<'a, EventInstance<E>>>,
+}
+
+impl<'a, E: Event> EventParIterator<'a, E>
+{
+    fn par_for_each<'w, FN: Fn(E) + Send + Sync + Clone>(&mut self) {
+        bevy_tasks::ComputeTaskPool::get().scope(|scope| {
+            
+            
+            
+        });
+    }
+}
+
+/// A parallel iterator that yields any unread events (and their IDs) from an [`EventReader`] or [`ManualEventReader`].
+#[derive(Debug)]
+pub struct EventParIteratorWithId<'a, E: Event> {
+    
 }
 
 #[doc(hidden)]
